@@ -257,3 +257,27 @@ sds %>%
   scale_fill_manual(values = c("No" = "lightblue", "Yes" = "lightpink")) +                        
   theme_minimal()
 
+# Train/Test split. Using a stratified split helps preserve the class 
+# distribution in the training and test sets 
+
+# load package caret for data splitting
+library(caret)
+
+# 80/20 stratified split and a seed is set for reproducibility
+set.seed(15)
+
+train_index <- caret::createDataPartition( y = sds$stroke,
+                                           p = 0.8,
+                                           list = FALSE)
+train_data <- sds[train_index, ]                                         
+test_data  <- sds[-train_index, ]
+
+#Check the dimensions in each set
+dim(train_data)
+dim(test_data)
+
+#check the class balance is intact
+prop.table(table(sds$stroke))
+prop.table(table(train_data$stroke))
+prop.table(table(test_data$stroke))
+
