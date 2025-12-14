@@ -56,6 +56,12 @@ sum(is.na(sds$bmi))
 # confirm summary after median fill
 summary(sds$bmi)
 
+# Also remove the id column. It is only a identifier, not a predictor. However,
+# it can mislead the models when fitting.
+sds <- sds %>% select(-id)
+# confirm
+names(sds)
+
 # EXPLORATORY DATA ANALYSIS (EDA)
 # EDA of the response variable 
 
@@ -256,7 +262,7 @@ sds %>%
        y = "BMI") +                                                                 
   scale_fill_manual(values = c("No" = "lightblue", "Yes" = "lightpink")) +                        
   theme_minimal()
-
+#
 # Train/Test split. Using a stratified split helps preserve the class 
 # distribution in the training and test sets 
 
@@ -281,3 +287,16 @@ prop.table(table(sds$stroke))
 prop.table(table(train_data$stroke))
 prop.table(table(test_data$stroke))
 
+
+
+# Model Fitting 
+
+# Define a single model formula object which includes all predictors 
+model_formula <- stroke ~ gender + age + hypertension + heart_disease + 
+  ever_married + work_type + Residence_type + avg_glucose_level +
+  bmi + smoking_status
+
+fit_logistic_model <- glm(model_formula,
+                          train_data,
+                          family = binomial)
+summary(fit_logistic_model)
