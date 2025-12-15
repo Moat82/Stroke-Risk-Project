@@ -6,6 +6,8 @@ library(dplyr)
 library(janitor)
 library(ggplot2)
 library(tibble)
+library(pROC)
+library(caret)
 # read healthcare_dataset_stroke_csv and assign it to the object 'sds'(stroke
 # data set) for ease of use. Converts N/A to missing entries 
 sds <- read.csv("healthcare_dataset_stroke_data.csv", header = TRUE,
@@ -291,12 +293,64 @@ prop.table(table(test_data$stroke))
 
 # Model Fitting 
 
+# Logistic Regression (GLM)
+
 # Define a single model formula object which includes all predictors 
 model_formula <- stroke ~ gender + age + hypertension + heart_disease + 
   ever_married + work_type + Residence_type + avg_glucose_level +
   bmi + smoking_status
 
-fit_logistic_model <- glm(model_formula,
-                          train_data,
+fit_logistic <- glm(model_formula,
+                          data = train_data,
                           family = binomial)
-summary(fit_logistic_model)
+#shows the summary statistics of the fitted model
+summary(fit_logistic)
+
+# odd ratios for coefficients 
+exp(coef(fit_logistic))
+
+# odds ration and 95% confidence intervals
+logistic_OR <- exp(coef(fit_logistic))
+logistic_CI <- exp(confint.default(fit_logistic))
+logistic_OR_table <- cbind( OR = logistic_OR,
+  CI_low  = logistic_CI[, 1],
+  CI_high = logistic_CI[, 2])
+
+# displays odds ratios and confidence intervals
+logistic_OR_table
+
+# predicted probabilities on test data
+logistic.probs <- predict(fit_logistic,
+                     newdata = test_data,
+                     type    = "response")
+# Converts predicted probabilities into classes using 0.5 cutoff
+logistic.pred <- ifelse(logistic.probs > 0.5, "Yes", "No")
+logistic.pred <- factor(logistic.pred, levels = levels(train_data$stroke))
+
+# Creates and prints confusion matrix
+logistic.cm <- table(Predicted = logistic.pred, Actual = test_data$stroke)
+logistic.cm
+
+# Calculates and prints test set accuracy 
+logistic.accuracy <- mean(logistic.pred == test_data$stroke)
+logistic.accuracy
+
+# Stroke is imbalanced, ROC/AUC
+library(pROC)
+
+# roc curve using test set
+roc_logistic <- roc(
+  response  = test_data$stroke,
+  predictor = logistic.probs, levels = c("No", "Yes"), direction = "<")
+
+# calculates and displays area under the roc curve
+auc_logistic <- auc(roc_logistic)
+auc_logistic
+
+# displays the roc curve
+plot(roc_logistic,
+     legacy.axes = TRUE,
+     main = "ROC Curve Logistic Regression (GLM)",
+     col = "blue")
+abline(a = 0, b = 1, lty = 5, col = "grey30")
+
