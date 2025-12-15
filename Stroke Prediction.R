@@ -354,3 +354,88 @@ plot(roc_logistic,
      col = "blue")
 abline(a = 0, b = 1, lty = 5, col = "grey30")
 
+# LASSO Logistic Regression 
+
+library(glmnet)
+
+# creates matrix for training and test data using model_formula
+x_train <- model.matrix(model_formula, train_data)[, -1]
+x_test <- model.matrix(model_formula, test_data)[, -1]
+
+# Creates numeric response
+y_train <- ifelse(train_data$stroke == "Yes", 1, 0)
+y_test <- ifelse(test_data$stroke == "Yes", 1, 0)
+
+# Set seed for Lasso cross validation for reproducibility
+set.seed(15)
+
+# Cross validated LASSO, alpha = 1
+cv_lasso <- cv.glmnet(
+  x = x_train,
+  y = y_train,
+  family = "binomial",
+  alpha = 1)
+
+# Plot cross validation curve
+plot(cv_lasso)
+
+# Best lambda chosen 
+cv_lasso$lambda.min
+cv_lasso$lambda.1se
+
+# Fit Lasso model on training data at lambda.min
+lasso_fit <- glmnet(
+  x      = x_train,
+  y      = y_train,
+  family = "binomial",
+  alpha  = 1,
+  lambda = cv_lasso$lambda.min)
+
+# Predict probabilities of stroke on test data
+lasso.probs <- predict(
+  lasso_fit,
+  newx = x_test,
+  type = "response")
+
+# Converts predicted probabilities into classes using 0.5 cutoff
+lasso.pred <- ifelse(lasso.probs > 0.5, "Yes", "No")
+lasso.pred <- factor(lasso.pred, levels = levels(train_data$stroke))
+
+# Creates and prints confusion matrix
+lasso.cm <- table(Predicted = lasso.pred, Actual = test_data$stroke)
+lasso.cm
+
+# Calculates and prints test set accuracy 
+lasso.accuracy <- mean(lasso.pred == test_data$stroke)
+lasso.accuracy
+
+# roc curve using test set
+roc_lasso <- roc(
+  response  = test_data$stroke, predictor = as.numeric(lasso.probs),
+  levels    = c("No", "Yes"), direction = "<")
+
+# calculates and displays area under the roc curve
+auc_lasso <- auc(roc_lasso)
+auc_lasso
+
+# displays the roc curve
+plot( roc_lasso,
+  legacy.axes = TRUE,
+  main = "ROC Curve LASSO Logistic Regression",
+  col  = "red")
+abline(a = 0, b = 1, lty = 5, col = "grey30")
+
+# Try a lower cutoff due to strong class imbalance, a cutoff below 0.5 was 
+# considered.
+cutoff <- 0.05
+
+lasso.pred <- ifelse(lasso.probs > cutoff, "Yes", "No")
+lasso.pred <- factor(lasso.pred, levels = levels(train_data$stroke))
+
+lasso.cm <- table(Predicted = lasso.pred, Actual = test_data$stroke)
+lasso.cm
+
+lasso.accuracy <- mean(lasso.pred == test_data$stroke)
+lasso.accuracy
+
+
