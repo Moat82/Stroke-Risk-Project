@@ -426,16 +426,80 @@ plot( roc_lasso,
 abline(a = 0, b = 1, lty = 5, col = "grey30")
 
 # Try a lower cutoff due to strong class imbalance, a cutoff below 0.5 was 
-# considered.
-cutoff <- 0.05
+# considered. Renamed for clarity
+cutoff_lower <- 0.05
 
-lasso.pred <- ifelse(lasso.probs > cutoff, "Yes", "No")
-lasso.pred <- factor(lasso.pred, levels = levels(train_data$stroke))
+lasso.pred_lower <- ifelse(lasso.probs > cutoff_lower, "Yes", "No")                               
+lasso.pred_lower <- factor(lasso.pred_lower, levels = levels(train_data$stroke))              
 
-lasso.cm <- table(Predicted = lasso.pred, Actual = test_data$stroke)
-lasso.cm
+lasso.cm_lower <- table(Predicted = lasso.pred_lower, Actual = test_data$stroke)
+lasso.cm_lower
 
-lasso.accuracy <- mean(lasso.pred == test_data$stroke)
-lasso.accuracy
+lasso.accuracy_lower <- mean(lasso.pred_lower == test_data$stroke)
+lasso.accuracy_lower
 
+
+# Random Forest
+
+library(randomForest)
+
+# Set seed for reproducibility
+set.seed(15)
+
+# Fit a random forest on the training data
+rf_fit <- randomForest(
+  stroke ~ .,
+  data = train_data,
+  ntree = 500, 
+  mtry = 3,                                                                      
+  importance = TRUE)
+
+# Prints random forest 
+rf_fit
+
+# Plot of importance measures 
+varImpPlot(rf_fit, main = "Random Forest Variable Importance")
+
+# Predict probabilities of stroke of test set
+rf_probs <- predict(rf_fit, newdata = test_data, type = "prob") [, "Yes"]
+
+# Creates and prints confusion matrix
+rf_pred <- ifelse(rf_probs > 0.5, "Yes", "No")
+rf_pred <- factor(rf_pred, levels = levels(train_data$stroke))
+
+rf_cm <- table(Predicted = rf_pred, Actual = test_data$stroke)
+rf_cm
+
+# Test accuracy for random forest
+rf_accuracy <- mean(rf_pred == test_data$stroke)
+rf_accuracy
+
+# roc curve using test set
+roc_rf <- roc(
+  response = test_data$stroke, predictor = rf_probs,
+  levels = c("No", "Yes"), direction = "<")
+
+# calculates and displays area under the roc curve
+auc_rf <- auc(roc_rf)
+auc_rf
+
+# displays the roc curve
+plot(
+  roc_rf,
+  legacy.axes = TRUE,
+  main = "ROC Curve Random Forest",
+  col  = "darkgreen")
+abline(a = 0, b = 1, lty = 5, col = "grey30")
+
+# Try a lower cutoff due to strong class imbalance, a cutoff below 0.5 was 
+# considered. Renamed for clarity
+
+rf_pred_lower <- ifelse(rf_probs > cutoff_lower, "Yes", "No")
+rf_pred_lower <- factor(rf_pred_lower, levels = levels(train_data$stroke))                     
+
+rf_cm_lower <- table(Predicted = rf_pred_lower, Actual = test_data$stroke)
+rf_cm_lower
+
+rf_accuracy_lower <- mean(rf_pred_lower == test_data$stroke)
+rf_accuracy_lower
 
