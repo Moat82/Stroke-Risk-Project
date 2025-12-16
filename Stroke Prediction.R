@@ -503,3 +503,81 @@ rf_cm_lower
 rf_accuracy_lower <- mean(rf_pred_lower == test_data$stroke)
 rf_accuracy_lower
 
+# Feed-Forward Neural Network
+library(h2o)
+
+# Connect to h2o server
+h2o.init()
+
+# Convert training and test data to h2o data
+train_hex <- as.h2o(train_data)
+test_hex <- as.h2o(test_data)
+
+# Designate response variable and remaining predictor variables
+y <- "stroke"
+x <- setdiff(names(train_hex), y)
+
+# Converts response variable to a factor inside h2o
+train_hex[, y] <- as.factor(train_hex[, y])
+test_hex [, y] <- as.factor(test_hex[, y])
+
+
+# Fit the deep learning Feed-Forward model 
+dlff_model <- h2o.deeplearning(
+  x = x,
+  y = y,
+  training_frame = train_hex,
+  activation = "Rectifier",
+  hidden = c(16, 8),
+  epochs = 50,
+  seed = 15)
+
+# Model summary
+dlff_model
+
+# Predicts probabilities on test set
+dlff_pred <- h2o.predict(dlff_model, test_hex)
+
+# Probabilities of "yes"
+dlff_probs <- as.vector(dlff_pred[, "Yes"])
+colnames(dlff_pred)
+summary(dlff_probs)
+
+# Creates and prints confusion matrix
+dlff_pred_05 <- ifelse(dlff_probs > 0.5, "Yes", "No")
+dlff_pred_05 <- factor(dlff_pred_05, levels = levels(train_data$stroke))
+table(Predicted = dlff_pred_05, Actual = test_data$stroke)
+
+# Test accuracy for Feed-Forward Neural Network
+dlff_accuracy <- mean(dlff_pred_05== test_data$stroke)
+dlff_accuracy
+
+# roc curve using test set
+roc_dlff <- roc(
+  response  = test_data$stroke,
+  predictor = dlff_probs,
+  levels    = c("No", "Yes"),
+  direction = "<")
+
+# calculates and displays area under the roc curve
+auc_dlff <- auc(roc_dlff)
+auc_dlff
+
+# displays the roc curve
+plot(roc_dlff,
+     legacy.axes = TRUE,
+     main = "ROC Curve Feed-forward Neural Network (h2o)",
+     col = "purple")
+abline(a = 0, b = 1, lty = 5, col = "grey30")
+
+# Try a lower cutoff due to strong class imbalance, a cutoff below 0.5 was 
+# considered. Renamed for clarity
+cutoff_lower <- 0.05
+dlff_pred_lower <- ifelse(dlff_probs > cutoff_lower, "Yes", "No")
+dlff_pred_lower <- factor(dlff_pred_lower, levels = levels(train_data$stroke))
+
+table(Predicted = dlff_pred_lower, Actual = test_data$stroke)
+
+dlff_accuracy_lower <- mean(dlff_pred_lower == test_data$stroke)
+dlff_accuracy_lower
+
