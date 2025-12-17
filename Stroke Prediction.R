@@ -17,7 +17,7 @@ sds <- read.csv("healthcare_dataset_stroke_data.csv", header = TRUE,
 # R can run them correctly
 sds <- sds%>%
   mutate(
-    stroke = factor(stroke, levels = c(0, 1), labels = c("No", "Yes")),
+    stroke = factor(stroke, levels = c(0, 1), labels = c("No", "Yes")),            
     gender = factor(gender),
     hypertension = factor(hypertension),
     heart_disease = factor(heart_disease),
@@ -539,7 +539,7 @@ dlff_model
 dlff_pred <- h2o.predict(dlff_model, test_hex)
 
 # Probabilities of "yes"
-dlff_probs <- as.vector(dlff_pred[, "Yes"])
+dlff_probs <- as.vector(dlff_pred[,"Yes"])
 colnames(dlff_pred)
 summary(dlff_probs)
 
@@ -580,4 +580,146 @@ table(Predicted = dlff_pred_lower, Actual = test_data$stroke)
 
 dlff_accuracy_lower <- mean(dlff_pred_lower == test_data$stroke)
 dlff_accuracy_lower
+
+# Model Comparison. (GLM vs LASSO vs Random Forest vs Feed-Forward Neural 
+# Network)
+
+# Converts the test outcome into a factor for comparison tables
+true <- factor(test_data$stroke, levels = c("No", "Yes"))
+
+# Ensures probabilities are numeric 
+logistic.probs <- as.numeric(logistic.probs)
+lasso.probs <- as.numeric(lasso.probs)
+rf_probs <- as.numeric(rf_probs)
+dlff_probs <- as.numeric(dlff_probs)
+
+# Cutoff for confusion matrix comparison
+cutoff <-0.5
+
+# Creates predicted classes and confusion matrix for Logistic Regression model 
+logistic.pred <- ifelse(logistic.probs > cutoff, "Yes", "No")
+logistic.pred <- factor(logistic.pred, levels = levels(true))
+logistic.cm   <- table(Predicted = logistic.pred, Actual = true)
+
+# Creates predicted classes and confusion matrix for LASSO model
+lasso.pred <- ifelse(lasso.probs > cutoff, "Yes", "No") 
+lasso.pred <- factor(lasso.pred, levels = levels(true))
+lasso.cm   <- table(Predicted = lasso.pred, Actual = true)
+
+# Creates predicted classes and confusion matrix for Random Forest model
+rf_pred <- ifelse(rf_probs > cutoff, "Yes", "No")
+rf_pred <- factor(rf_pred, levels = levels(true))                                  
+rf_cm   <- table(Predicted = rf_pred, Actual = true)
+
+# Creates predicted classes and confusion matrix for Feed-forward model
+dlff_pred <- ifelse(dlff_probs > cutoff, "Yes", "No")                               
+dlff_pred <- factor(dlff_pred, levels = levels(true))                              
+dlff_cm   <- table(Predicted = dlff_pred, Actual = true)
+
+# Prints confusion matrices
+logistic.cm                                                                             
+lasso.cm                                                                           
+rf_cm                                                                              
+dlff_cm
+
+# Defines function to compute metrics from confusion matrix
+calc_metrics <- function(cm) {
+  all_levels <- c("No", "Yes")                                                      
+  cm_full <- matrix(0,
+                    nrow = 2, ncol = 2,                                             
+                    dimnames = list(Predicted = all_levels,
+                                    Actual    = all_levels))
+  cm_full[rownames(cm), colnames(cm)] <- cm                                         
+  cm <- cm_full                                                                     
+  
+  TN <- cm["No",  "No"]                                                             
+  FP <- cm["Yes", "No"]                                                             
+  FN <- cm["No",  "Yes"]                                                            
+  TP <- cm["Yes", "Yes"]                                                            
+  
+  accuracy    <- (TP + TN) / sum(cm)                                                
+  sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), NA)                          
+  specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), NA)                          
+  precision   <- ifelse((TP + FP) > 0, TP / (TP + FP), NA)                          
+  f1   <- ifelse(!is.na(precision) & !is.na(sensitivity) & 
+                   (precision + sensitivity) > 0, 
+                 2 * (precision * sensitivity) / (precision + sensitivity), NA)
+  
+list(
+    accuracy    = as.numeric(accuracy),
+    sensitivity = as.numeric(sensitivity),
+    specificity = as.numeric(specificity),
+    precision   = as.numeric(precision),
+    f1          = as.numeric(f1))}                                                                                   
+
+# Computes performance metrics for each model's confusion matrix
+logistic.metrics  <- calc_metrics(logistic.cm)                                                
+lasso.metrics     <- calc_metrics(lasso.cm)                                             
+rf_metrics        <- calc_metrics(rf_cm)                                                 
+dlff_metrics      <- calc_metrics(dlff_cm)
+
+# Computes Roc/Auc for each model
+
+roc_logistic   <- roc(response = true, predictor = logistic.probs, 
+                      levels = c("No","Yes"), direction = "<")
+roc_lasso      <- roc(response = true, predictor = lasso.probs,
+                      levels = c("No","Yes"), direction = "<")
+roc_rf         <- roc(response = true, predictor = rf_probs,
+                      levels = c("No","Yes"), direction = "<")
+roc_dlff       <- roc(response = true, predictor = dlff_probs,
+                      levels = c("No","Yes"), direction = "<")
+
+# Creates tibble summerising metrics for each model
+comparison <- tibble(                                                               
+  Model = c("Logistic Regression (GLM)",
+            "LASSO Logistic Regression",
+            "Random Forest",
+            "Feed-forward Neural Network (h2o)"),
+  
+Cutoff = cutoff,
+  
+AUC =         c(as.numeric(pROC::auc(roc_logistic)),
+                as.numeric(pROC::auc(roc_lasso)),
+                as.numeric(pROC::auc(roc_rf)),
+                as.numeric(pROC::auc(roc_dlff))),
+                  
+Accuracy =    c(logistic.metrics$accuracy,
+                lasso.metrics$accuracy,
+                rf_metrics$accuracy,
+                dlff_metrics$accuracy),
+
+Sensitivity = c(logistic.metrics$sensitivity,
+                lasso.metrics$sensitivity,
+                rf_metrics$sensitivity,
+                dlff_metrics$sensitivity),
+
+Specificity = c(logistic.metrics$specificity,
+                lasso.metrics$specificity,
+                rf_metrics$specificity,
+                dlff_metrics$specificity),
+
+Precision =   c(logistic.metrics$precision,
+                lasso.metrics$precision,
+                rf_metrics$precision,
+                dlff_metrics$precision),
+
+F1 =           c(logistic.metrics$f1,
+                 lasso.metrics$f1,
+                 rf_metrics$f1,
+                 dlff_metrics$f1)
+)%>%                                                                               
+mutate(across(where(is.numeric), ~ round(., 4)))                                  
+
+# Prints model comparison
+comparison                                                                          
+
+
+# Selects "best" model by AUC 
+
+comparison %>%
+  arrange(desc(AUC)) %>%                                                            
+  slice(1)                                                                          
+
+
+
 
