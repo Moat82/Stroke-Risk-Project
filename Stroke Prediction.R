@@ -264,7 +264,7 @@ sds %>%
        y = "BMI") +                                                                 
   scale_fill_manual(values = c("No" = "lightblue", "Yes" = "lightpink")) +                        
   theme_minimal()
-#
+
 # Train/Test split. Using a stratified split helps preserve the class 
 # distribution in the training and test sets 
 
@@ -707,8 +707,8 @@ F1 =           c(logistic.metrics$f1,
                  lasso.metrics$f1,
                  rf_metrics$f1,
                  dlff_metrics$f1)
-)%>%                                                                               
-mutate(across(where(is.numeric), ~ round(., 4)))                                  
+)%>%
+  mutate(across(where(is.numeric), ~ round(., 4)))                                  
 
 # Prints model comparison
 comparison                                                                          
@@ -720,6 +720,137 @@ comparison %>%
   arrange(desc(AUC)) %>%                                                            
   slice(1)                                                                          
 
+# Threshold comparison at cutoff = 0.05
+
+cutoff_lower <- 0.05
+
+
+# Creates predicted classes and confusion matrix for Logistic Regression at 
+# lower cut off 
+logistic.pred_lower <- ifelse(logistic.probs > cutoff_lower, "Yes", "No")
+logistic.pred_lower <- factor(logistic.pred_lower, levels = levels(true))
+logistic.cm_lower   <- table(Predicted = logistic.pred_lower, Actual = true)
+
+# Creates predicted classes and confusion matrix for LASSO at lower cutoff
+lasso.pred_lower <- ifelse(lasso.probs > cutoff_lower, "Yes", "No")
+lasso.pred_lower <- factor(lasso.pred_lower, levels = levels(true))
+lasso.cm_lower   <- table(Predicted = lasso.pred_lower, Actual = true)
+
+# Creates predicted classes and confusion matrix for random forest at lower 
+# cut off 
+rf_pred_lower <- ifelse(rf_probs > cutoff_lower, "Yes", "No")
+rf_pred_lower <- factor(rf_pred_lower, levels = levels(true))
+rf_cm_lower <- table(Predicted = rf_pred_lower, Actual = true)
+
+# Creates predicted classes and confusion matrix for feed-forward at lower  
+# cutoff
+dlff_pred_lower <- ifelse(dlff_probs > cutoff_lower, "Yes", "No")
+dlff_pred_lower <- factor(dlff_pred_lower, levels = levels(true))
+dlff_cm_lower   <- table(Predicted = dlff_pred_lower, Actual = true)
+
+
+# Function to compute metrics from a 2x2 confusion matrix
+
+calc_metrics_lower <- function(cm) {
+  all_levels <- c("No", "Yes")
+  cm_full <- matrix(0,
+                    nrow = 2, ncol = 2,
+                    dimnames = list(Predicted = all_levels,
+                                    Actual    = all_levels))
+  cm_full[rownames(cm), colnames(cm)] <- cm
+  cm <- cm_full
+  
+  TN <- cm["No",  "No"] 
+  FP <- cm["Yes", "No"] 
+  FN <- cm["No",  "Yes"]  
+  TP <- cm["Yes", "Yes"]  
+  
+# Computes performance metrics
+  accuracy    <- (TP + TN) / sum(cm)
+  sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), NA)      
+  specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), NA)      
+  precision   <- ifelse((TP + FP) > 0, TP / (TP + FP), NA)      
+  f1          <- ifelse(is.na(precision) | is.na(sensitivity) | 
+                          (precision + sensitivity) == 0, NA,
+                        2 * precision * sensitivity / (precision + sensitivity))
+  
+# Returns all metrics as a named list
+list(accuracy = accuracy,
+     sensitivity = sensitivity,
+     specificity = specificity,
+     precision = precision,
+     f1 = f1)}
+
+
+# Compute metrics at each cutoff for each model
+logistic.metrics_lower <- calc_metrics_lower(logistic.cm_lower)
+lasso.metrics_lower    <- calc_metrics_lower(lasso.cm_lower)
+rf_metrics_lower       <- calc_metrics_lower(rf_cm_lower)
+dlff_metrics_lower    <- calc_metrics_lower(dlff_cm_lower)
+
+
+# Comparison table for the lower cutoff
+comparison_lower <- tibble(
+  Model = c(
+    "Logistic Regression (GLM)",
+    "LASSO Logistic Regression",
+    "Random Forest",
+    "Feed-forward Neural Network (h2o)"
+  ),
+  Cutoff = cutoff_lower,
+  AUC = c(
+    as.numeric(pROC::auc(roc_logistic)),
+    as.numeric(pROC::auc(roc_lasso)),
+    as.numeric(pROC::auc(roc_rf)),
+    as.numeric(pROC::auc(roc_dlff))),
+  
+  Accuracy = c(
+    logistic.metrics_lower$accuracy,
+    lasso.metrics_lower$accuracy,
+    rf_metrics_lower$accuracy,
+    dlff_metrics_lower$accuracy
+  ),
+  Sensitivity = c(
+    logistic.metrics_lower$sensitivity,
+    lasso.metrics_lower$sensitivity,
+    rf_metrics_lower$sensitivity,
+    dlff_metrics_lower$sensitivity
+  ),
+  Specificity = c(
+    logistic.metrics_lower$specificity,
+    lasso.metrics_lower$specificity,
+    rf_metrics_lower$specificity,
+    dlff_metrics_lower$specificity
+  ),
+  Precision = c(
+    logistic.metrics_lower$precision,
+    lasso.metrics_lower$precision,
+    rf_metrics_lower$precision,
+    dlff_metrics_lower$precision
+  ),
+  F1 = c(
+    logistic.metrics_lower$f1,
+    lasso.metrics_lower$f1,
+    rf_metrics_lower$f1,
+    dlff_metrics_lower$f1)
+)%>%
+  mutate(across(where(is.numeric), ~ round(., 4)))
+
+# Print the lower-cutoff comparison table
+comparison_lower
+
+# rank by Sensitivity 
+comparison_lower %>%
+  arrange(desc(Sensitivity))
+
+# Comparison table of cutoff 0.5 vs cutoff_lower 0.05
+comparison <- comparison %>%
+  mutate(Threshold = "0.5")
+
+comparison_lower <- comparison_lower %>%
+  mutate(Threshold = "0.05")
+comparison_both <- bind_rows(comparison, comparison_lower)
+comparison_both
 
 
 
