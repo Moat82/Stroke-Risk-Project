@@ -16,7 +16,8 @@ library(h2o)
 
 ## read healthcare_data set_stroke_csv. Assign it to the object 'sds'(stroke  #
 ## data set), and converts N/A to missing entries                             #
-sds <- read.csv("healthcare_dataset_stroke_data.csv", header = TRUE,
+sds <- read.csv("data/raw/healthcare_dataset_stroke_data.csv", 
+                header = TRUE,
                 na.strings = c("N/A", ""))
 
 ## DATA PREPERATION AND DATA QUALITY CHECK ####################################
