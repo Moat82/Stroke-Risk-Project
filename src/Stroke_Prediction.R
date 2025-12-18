@@ -11,12 +11,12 @@ library(janitor)
 library(caret)                                                                 
 library(glmnet)                                                                 
 library(randomForest)  
-library(pROC)                                                                       
 library(h2o)                                                                        
-
+library(PRROC)
+library(pROC) 
 ## read healthcare_data set_stroke_csv. Assign it to the object 'sds'(stroke  #
 ## data set), and converts N/A to missing entries                             #
-sds <- read.csv("data/raw/healthcare_dataset_stroke_data.csv", 
+sds <- read.csv("Data/raw/healthcare_dataset_stroke_data.csv", 
                 header = TRUE,
                 na.strings = c("N/A", ""))
 
@@ -335,8 +335,8 @@ model_formula <- stroke ~ gender + age + hypertension + heart_disease +
 
 ## Logistic regression (GLM) baseline model ###################################
 glm_model <- glm(model_formula,
-                          data = train_data,
-                          family = binomial)
+                 data = train_data,
+                 family = binomial)
 
 # model summary and coefficient significance                                  #
 summary(glm_model)
@@ -348,8 +348,8 @@ exp(coef(glm_model))
 glm_OR <- exp(coef(glm_model))
 glm_CI <- exp(confint.default(glm_model))
 glm_OR_table <- cbind( OR = glm_OR,
-  CI_low  = glm_CI[, 1],
-  CI_high = glm_CI[, 2])
+                       CI_low  = glm_CI[, 1],
+                       CI_high = glm_CI[, 2])
 
 glm_OR_table
 
@@ -428,6 +428,9 @@ lasso_probs <- predict(
   newx = x_test,
   type = "response")
 
+# converts predicted probabilities to a numeric vector                        #
+lasso_probs <- as.vector(lasso_probs)
+
 # converts predicted probabilities into classes using 0.5 cutoff              #
 lasso_pred <- ifelse(lasso_probs > 0.5, "Yes", "No")
 lasso_pred <- factor(lasso_pred, levels = levels(train_data$stroke))
@@ -450,9 +453,9 @@ auc_lasso
 
 # plots ROC curve                                                             #
 plot( roc_lasso,
-  legacy.axes = TRUE,
-  main = "LASSO Logistic Regression ROC Curve",
-  col  = "red")
+      legacy.axes = TRUE,
+      main = "LASSO Logistic Regression ROC Curve",
+      col  = "red")
 abline(a = 0, b = 1, lty = 5, col = "grey30")
 
 ## Random forest ##############################################################
@@ -632,7 +635,7 @@ calc_metrics <- function(cm) {
                    (precision + sensitivity) > 0, 
                  2 * (precision * sensitivity) / (precision + sensitivity), NA)
   
-list(
+  list(
     accuracy    = as.numeric(accuracy),
     sensitivity = as.numeric(sensitivity),
     specificity = as.numeric(specificity),
@@ -656,6 +659,52 @@ roc_rf         <- roc(response = true, predictor = rf_probs,
 roc_dlff       <- roc(response = true, predictor = dlff_probs,
                       levels = c("No","Yes"), direction = "<")
 
+# PR curves use predicted probabilities for the positive class "Yes"          #
+y_pos <- which(test_data$stroke == "Yes")
+y_neg <- which(test_data$stroke == "No")
+
+# computes PR curves                                                          #
+pr_glm   <- pr.curve(scores.class0 = glm_probs[y_pos], 
+                     scores.class1 = glm_probs[y_neg], 
+                     curve = TRUE)
+
+pr_lasso <- pr.curve(scores.class0 = lasso_probs [y_pos],
+                     scores.class1 = lasso_probs [y_neg],
+                     curve = TRUE)
+
+pr_rf    <- pr.curve(scores.class0 = rf_probs[y_pos], 
+                     scores.class1 = rf_probs[y_neg], 
+                     curve = TRUE)
+
+pr_dlff  <- pr.curve(scores.class0 = dlff_probs[y_pos], 
+                     scores.class1 = dlff_probs[y_neg], 
+                     curve = TRUE)
+
+# calculates PR-AUC values                                                    #
+pr_auc_glm   <- pr_glm$auc.integral
+pr_auc_lasso <- pr_lasso$auc.integral
+pr_auc_rf    <- pr_rf$auc.integral
+pr_auc_dlff  <- pr_dlff$auc.integral
+
+# prints PR-AUC values                                                        #
+pr_auc_glm
+pr_auc_lasso
+pr_auc_rf
+pr_auc_dlff
+
+# plots PR curves                                                             #
+plot(pr_glm$curve[,1], pr_glm$curve[,2], type = "l", col = "blue",
+     xlab = "Recall", 
+     ylab = "Precision", 
+     main = "Precision-Recall Curves")
+lines(pr_lasso$curve[,1], pr_lasso$curve[,2], col = "red")
+lines(pr_rf$curve[,1],    pr_rf$curve[,2],    col = "darkgreen")
+lines(pr_dlff$curve[,1],  pr_dlff$curve[,2],  col = "purple")
+legend("topright", 
+       legend = c("GLM","LASSO","RF","DLFF"),
+       col = c("blue","red","darkgreen","purple"),
+       lty = 1)
+
 # tibble summerising metrics for each model                                   #
 comparison <- tibble(                                                               
   Model = c("Logistic Regression (GLM)",
@@ -663,54 +712,64 @@ comparison <- tibble(
             "Random Forest",
             "Feed-forward Neural Network (h2o)"),
   
-Cutoff = cutoff,
+  PR_AUC = c(
+    pr_auc_glm,
+    pr_auc_lasso,
+    pr_auc_rf,
+    pr_auc_dlff),
   
-AUC = c(
-  as.numeric(pROC::auc(roc_glm)),
-  as.numeric(pROC::auc(roc_lasso)),
-  as.numeric(pROC::auc(roc_rf)),
-  as.numeric(pROC::auc(roc_dlff))),
-
-Accuracy = c(
-  glm_metrics$accuracy,
-  lasso_metrics$accuracy,
-  rf_metrics$accuracy,
-  dlff_metrics$accuracy),
-
-Sensitivity = c(
-  glm_metrics$sensitivity,
-  lasso_metrics$sensitivity,
-  rf_metrics$sensitivity,
-  dlff_metrics$sensitivity),
-
-Specificity = c(
-  glm_metrics$specificity,
-  lasso_metrics$specificity,
-  rf_metrics$specificity,
-  dlff_metrics$specificity),
-
-Precision = c(
-  glm_metrics$precision,
-  lasso_metrics$precision,
-  rf_metrics$precision,
-  dlff_metrics$precision),
-
-F1 = c(
-  glm_metrics$f1,
-  lasso_metrics$f1,
-  rf_metrics$f1,
-  dlff_metrics$f1)
+  AUC = c(
+    auc_glm,
+    auc_lasso,
+    auc_rf,
+    auc_dlff),
+  
+  Accuracy = c(
+    glm_metrics$accuracy,
+    lasso_metrics$accuracy,
+    rf_metrics$accuracy,
+    dlff_metrics$accuracy),
+  
+  Sensitivity = c(
+    glm_metrics$sensitivity,
+    lasso_metrics$sensitivity,
+    rf_metrics$sensitivity,
+    dlff_metrics$sensitivity),
+  
+  Specificity = c(
+    glm_metrics$specificity,
+    lasso_metrics$specificity,
+    rf_metrics$specificity,
+    dlff_metrics$specificity),
+  
+  Precision = c(
+    glm_metrics$precision,
+    lasso_metrics$precision,
+    rf_metrics$precision,
+    dlff_metrics$precision),
+  
+  F1 = c(
+    glm_metrics$f1,
+    lasso_metrics$f1,
+    rf_metrics$f1,
+    dlff_metrics$f1)
 )%>%
   mutate(across(where(is.numeric), ~ round(., 4)))                                  
 
 # prints model comparison                                                     #
-comparison                                                                          
+comparison
 
+# Model selection based on threshold-independent metrics                      #
 
-# best model by AUC (threshold independent)                                   #
+# best model by AUC (threshold independent)                                                                #
 comparison %>%
-  arrange(desc(AUC)) %>%                                                            
-  slice(1)  
+  arrange(desc(AUC)) %>%
+  slice(1)
+
+# best model by PR-AUC (threshold independent)                                #
+comparison %>%
+  arrange(desc(PR_AUC)) %>%
+  slice(1)
 
 ## Threshold comparison #######################################################
 ## Assesses the impact of different cutoffs on model performance              #
@@ -761,21 +820,21 @@ calc_metrics_lower <- function(cm) {
   FN <- cm["No",  "Yes"]  
   TP <- cm["Yes", "Yes"]  
   
-# Computes performance metrics
+  # Computes performance metrics                                                #
   accuracy    <- (TP + TN) / sum(cm)
   sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), NA)      
   specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), NA)      
   precision   <- ifelse((TP + FP) > 0, TP / (TP + FP), NA)      
   f1          <- ifelse(is.na(precision) | is.na(sensitivity) | 
                           (precision + sensitivity) == 0, NA,
-                      2 * precision * sensitivity / (precision + sensitivity))
+                        2 * precision * sensitivity / (precision + sensitivity))
   
-# returns all metrics as a named list                                         #
-list(accuracy = accuracy,
-     sensitivity = sensitivity,
-     specificity = specificity,
-     precision = precision,
-     f1 = f1)}
+  # returns all metrics as a named list                                         #
+  list(accuracy = accuracy,
+       sensitivity = sensitivity,
+       specificity = specificity,
+       precision = precision,
+       f1 = f1)}
 
 
 # compute metrics at cutoff_lower                                             #
@@ -793,39 +852,43 @@ comparison_lower <- tibble(
     "Random Forest",
     "Feed-forward Neural Network (h2o)"),
   
-Cutoff = cutoff_lower,
+  PR_AUC = c(
+    pr_auc_glm,
+    pr_auc_lasso,
+    pr_auc_rf,
+    pr_auc_dlff),
   
-AUC = c(
-    as.numeric(pROC::auc(roc_glm)),
-    as.numeric(pROC::auc(roc_lasso)),
-    as.numeric(pROC::auc(roc_rf)),
-    as.numeric(pROC::auc(roc_dlff))),
+  AUC = c(
+    auc_glm,
+    auc_lasso,
+    auc_rf,
+    auc_dlff),
   
-Accuracy = c(
+  Accuracy = c(
     glm_metrics_lower$accuracy,
     lasso_metrics_lower$accuracy,
     rf_metrics_lower$accuracy,
     dlff_metrics_lower$accuracy),
-
-Sensitivity = c(
+  
+  Sensitivity = c(
     glm_metrics_lower$sensitivity,
     lasso_metrics_lower$sensitivity,
     rf_metrics_lower$sensitivity,
     dlff_metrics_lower$sensitivity),
-
-Specificity = c(
+  
+  Specificity = c(
     glm_metrics_lower$specificity,
     lasso_metrics_lower$specificity,
     rf_metrics_lower$specificity,
     dlff_metrics_lower$specificity),
-
-Precision = c(
+  
+  Precision = c(
     glm_metrics_lower$precision,
     lasso_metrics_lower$precision,
     rf_metrics_lower$precision,
     dlff_metrics_lower$precision),
-
-F1 = c(
+  
+  F1 = c(
     glm_metrics_lower$f1,
     lasso_metrics_lower$f1,
     rf_metrics_lower$f1,
@@ -842,10 +905,16 @@ comparison_lower %>%
 
 # compare default cutoff vs cutoff_lower                                      #
 comparison <- comparison %>%
-  mutate(Threshold = cutoff)
-
+  mutate(Threshold = cutoff,
+         Threshold_Type = "Default (0.5)")
+# adds prevalence based threshold and combines with default threshold         #
 comparison_lower <- comparison_lower %>%
-  mutate(Threshold = cutoff_lower)
-comparison_both <- bind_rows(comparison, comparison_lower)
+  mutate(Threshold = cutoff_lower,
+         Threshold_Type = "Prevalence based")
+# combines default and prevalence based threshold into one table              #
+comparison_both <- bind_rows(comparison, comparison_lower) %>%
+  select(Model, Threshold_Type, Threshold, PR_AUC, AUC, Accuracy, Sensitivity,
+         Specificity, Precision, F1)
+# displays combined table                                                     #
 comparison_both
 
