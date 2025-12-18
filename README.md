@@ -1,2 +1,5 @@
 # Statistical and Machine Learning Approaches to Predicting Stroke Risk
-Coursework project using Kaggle dataset
+## Project Overview
+## Dataset
+## Models Considered
+## Evaluation Metrics
