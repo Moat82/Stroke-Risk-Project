@@ -1,5 +1,5 @@
 ###############################################################################
-## Stroke Risk Prediction Using Statistical and Machine Learning Models       #
+## Statistical and Machine Learning Approaches to Predicting Stroke Risk      #
 ###############################################################################
 
 ## PACKAGE AND DATA SET INPUT #################################################
@@ -210,6 +210,14 @@ sds %>%
   ) +
   scale_fill_manual(values = c("No" = "lightblue", "Yes" = "lightpink")) +
   scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(
+    labels = c( 
+      "children" = "Children",
+      "Govt_job" = "Government Job",
+      "Never_worked" = "Never Worked",
+      "Private" = "Private",
+      "Self-employed" = "Self-employed")
+  )+
   theme_light()
 
 # Residence_type by stroke contingency tables                                 #
@@ -254,6 +262,13 @@ sds %>%
   ) +
   scale_fill_manual(values = c("No" = "lightblue", "Yes" = "lightpink")) +
   scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(
+    labels = c(
+      "formerly smoked" = "Formerly Smoked",
+      "never smoked" = "Never Smoked",
+      "smokes" = "Smokes",
+      "Unknown" = "Unknown")
+  )+
   theme_light()
 
 ## EDA of numerical predictors: summary statistics and box plots show the     #
@@ -659,7 +674,42 @@ roc_rf         <- roc(response = true, predictor = rf_probs,
 roc_dlff       <- roc(response = true, predictor = dlff_probs,
                       levels = c("No","Yes"), direction = "<")
 
-# PR curves use predicted probabilities for the positive class "Yes"          #
+# computes AUC values                                                         #
+auc_glm   <- auc(roc_glm)
+auc_lasso <- auc(roc_lasso)
+auc_rf    <- auc(roc_rf)
+auc_dlff  <- auc(roc_dlff)
+
+# plot ROC curves on same axes
+plot(roc_glm,
+     legacy.axes = TRUE,
+     col = "blue",
+     lwd = 2,
+     main = "ROC Curves for Stroke Risk Prediction Models",
+     xlab = "1 - Specificity (False Positive Rate)",
+     ylab = "Sensitivity (True Positive Rate)")
+
+lines(roc_lasso, col = "red",       lwd = 2)
+lines(roc_rf,    col = "darkgreen", lwd = 2)
+lines(roc_dlff,  col = "purple",    lwd = 2)
+
+abline(a = 0, b = 1, lty = 2, col = "grey40")
+
+legend("bottomright",
+       inset = c(0.02, 0.30),
+       legend = c(
+         paste0("GLM (AUC = ", round(auc_glm, 4), ")"),
+         paste0("LASSO (AUC = ", round(auc_lasso, 4), ")"),
+         paste0("RF (AUC = ", round(auc_rf, 4), ")"),
+         paste0("DLFF (AUC = ", round(auc_dlff, 4), ")")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1,
+       lwd = 2,
+       bty = "n",
+       cex = 0.85)
+
+# PR curves use predicted probabilities for the positive class0 "Yes"         #
 y_pos <- which(test_data$stroke == "Yes")
 y_neg <- which(test_data$stroke == "No")
 
@@ -692,62 +742,83 @@ pr_auc_lasso
 pr_auc_rf
 pr_auc_dlff
 
-# plots PR curves                                                             #
-plot(pr_glm$curve[,1], pr_glm$curve[,2], type = "l", col = "blue",
-     xlab = "Recall", 
-     ylab = "Precision", 
-     main = "Precision-Recall Curves")
-lines(pr_lasso$curve[,1], pr_lasso$curve[,2], col = "red")
-lines(pr_rf$curve[,1],    pr_rf$curve[,2],    col = "darkgreen")
-lines(pr_dlff$curve[,1],  pr_dlff$curve[,2],  col = "purple")
-legend("topright", 
-       legend = c("GLM","LASSO","RF","DLFF"),
-       col = c("blue","red","darkgreen","purple"),
-       lty = 1)
+# plots PR curves on same axes                                                #
+plot(pr_glm$curve[,1], pr_glm$curve[,2],
+     type = "l",
+     col = "blue",
+     lwd = 2,
+     xlab = "Recall",
+     ylab = "Precision",
+     main = "Precision–Recall Curves for Stroke Risk Prediction Models")
 
-# tibble summerising metrics for each model                                   #
-comparison <- tibble(                                                               
-  Model = c("Logistic Regression (GLM)",
-            "LASSO Logistic Regression",
-            "Random Forest",
-            "Feed-forward Neural Network (h2o)"),
+lines(pr_lasso$curve[,1], pr_lasso$curve[,2], col = "red",       lwd = 2)
+lines(pr_rf$curve[,1],    pr_rf$curve[,2],    col = "darkgreen", lwd = 2)
+lines(pr_dlff$curve[,1],  pr_dlff$curve[,2],  col = "purple",    lwd = 2)
+
+legend("topright",
+       legend = c(
+         paste0("GLM (PR-AUC = ", round(pr_auc_glm, 4), ")"),
+         paste0("LASSO (PR-AUC = ", round(pr_auc_lasso, 4), ")"),
+         paste0("RF (PR-AUC = ", round(pr_auc_rf, 4), ")"),
+         paste0("DLFF (PR-AUC = ", round(pr_auc_dlff, 4), ")")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1,
+       lwd = 2,
+       bty = "n",
+       cex = 0.85)
+
+comparison <- tibble(
+  Model = c(
+    "Logistic Regression (GLM)",
+    "LASSO Logistic Regression",
+    "Random Forest",
+    "Feed-forward Neural Network (h2o)"
+  ),
   
+# PR-AUC area                                                                 #
   PR_AUC = c(
     pr_auc_glm,
     pr_auc_lasso,
     pr_auc_rf,
     pr_auc_dlff),
   
+# ROC curve area                                                              #
   AUC = c(
     auc_glm,
     auc_lasso,
     auc_rf,
     auc_dlff),
   
+# overall accuracy                                                            #
   Accuracy = c(
     glm_metrics$accuracy,
     lasso_metrics$accuracy,
     rf_metrics$accuracy,
     dlff_metrics$accuracy),
-  
+
+# true positive rate                                                          #
   Sensitivity = c(
     glm_metrics$sensitivity,
     lasso_metrics$sensitivity,
     rf_metrics$sensitivity,
     dlff_metrics$sensitivity),
   
+# true negative rate                                                          #
   Specificity = c(
     glm_metrics$specificity,
     lasso_metrics$specificity,
     rf_metrics$specificity,
     dlff_metrics$specificity),
   
+# positive predictive value                                                   #
   Precision = c(
     glm_metrics$precision,
     lasso_metrics$precision,
     rf_metrics$precision,
     dlff_metrics$precision),
   
+# precision recall balance                                                    #
   F1 = c(
     glm_metrics$f1,
     lasso_metrics$f1,
@@ -761,7 +832,7 @@ comparison
 
 # Model selection based on threshold-independent metrics                      #
 
-# best model by AUC (threshold independent)                                                                #
+# best model by AUC (threshold independent)                                   #
 comparison %>%
   arrange(desc(AUC)) %>%
   slice(1)
@@ -820,7 +891,7 @@ calc_metrics_lower <- function(cm) {
   FN <- cm["No",  "Yes"]  
   TP <- cm["Yes", "Yes"]  
   
-  # Computes performance metrics                                                #
+# Computes performance metrics                                                #
   accuracy    <- (TP + TN) / sum(cm)
   sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), NA)      
   specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), NA)      
@@ -829,8 +900,8 @@ calc_metrics_lower <- function(cm) {
                           (precision + sensitivity) == 0, NA,
                         2 * precision * sensitivity / (precision + sensitivity))
   
-  # returns all metrics as a named list                                         #
-  list(accuracy = accuracy,
+# returns all metrics as a named list                                         #
+list(accuracy = accuracy,
        sensitivity = sensitivity,
        specificity = specificity,
        precision = precision,
@@ -852,42 +923,48 @@ comparison_lower <- tibble(
     "Random Forest",
     "Feed-forward Neural Network (h2o)"),
   
+# PR-AUC area                                                                 #
   PR_AUC = c(
     pr_auc_glm,
     pr_auc_lasso,
     pr_auc_rf,
     pr_auc_dlff),
-  
+# ROC curve area                                                              #
   AUC = c(
     auc_glm,
     auc_lasso,
     auc_rf,
     auc_dlff),
-  
+
+# overall accuracy                                                            #
   Accuracy = c(
     glm_metrics_lower$accuracy,
     lasso_metrics_lower$accuracy,
     rf_metrics_lower$accuracy,
     dlff_metrics_lower$accuracy),
-  
+
+# true positive rate                                                          #
   Sensitivity = c(
     glm_metrics_lower$sensitivity,
     lasso_metrics_lower$sensitivity,
     rf_metrics_lower$sensitivity,
     dlff_metrics_lower$sensitivity),
-  
+
+# true negative rate                                                          #             
   Specificity = c(
     glm_metrics_lower$specificity,
     lasso_metrics_lower$specificity,
     rf_metrics_lower$specificity,
     dlff_metrics_lower$specificity),
-  
+
+# positive predictive value                                                   #
   Precision = c(
     glm_metrics_lower$precision,
     lasso_metrics_lower$precision,
     rf_metrics_lower$precision,
     dlff_metrics_lower$precision),
-  
+
+# precision recall balanace                                                   #
   F1 = c(
     glm_metrics_lower$f1,
     lasso_metrics_lower$f1,
@@ -911,10 +988,12 @@ comparison <- comparison %>%
 comparison_lower <- comparison_lower %>%
   mutate(Threshold = cutoff_lower,
          Threshold_Type = "Prevalence based")
+
 # combines default and prevalence based threshold into one table              #
 comparison_both <- bind_rows(comparison, comparison_lower) %>%
   select(Model, Threshold_Type, Threshold, PR_AUC, AUC, Accuracy, Sensitivity,
          Specificity, Precision, F1)
+
 # displays combined table                                                     #
 comparison_both
 
