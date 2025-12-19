@@ -997,3 +997,4 @@ comparison_both <- bind_rows(comparison, comparison_lower) %>%
 # displays combined table                                                     #
 comparison_both
 
+
